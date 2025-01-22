@@ -1,0 +1,10 @@
+displayName: Header2Notify
+type: middleware
+iconPath: .assets/logo.png
+
+import: github.com/94peter/header2notify
+
+summary: 'check notify header exist and push to notify service'
+
+testData:
+  NotifyHeader: X-Notify
