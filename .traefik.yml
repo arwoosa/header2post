@@ -1,10 +1,10 @@
-displayName: Header2Notify
+displayName: Header2Post
 type: middleware
 iconPath: .assets/logo.png
 
-import: github.com/94peter/header2notify
+import: github.com/94peter/header2post
 
-summary: 'check notify header exist and push to notify service'
+summary: 'check notify header exist and use http post to url'
 
 testData:
   notifyheader: X-Notify

@@ -1,4 +1,4 @@
-package header2notify
+package header2post
 
 import (
 	"bytes"
