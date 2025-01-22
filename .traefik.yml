@@ -7,4 +7,5 @@ import: github.com/94peter/header2notify
 summary: 'check notify header exist and push to notify service'
 
 testData:
-  NotifyHeader: X-Notify
+  notifyheader: X-Notify
+  notifyurl: http://localhost:8000
