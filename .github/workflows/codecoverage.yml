@@ -1,0 +1,120 @@
+name: go-code-coverage
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  issues: write 
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      
+      - name: test
+        env:
+          GITHUB_TOKEN: ${{ matrix.os == 'ubuntu-latest' && secrets.GITHUB_TOKEN || '' }} # Needed for GitHub badge storer integration test
+        run: go test -race -count=1 -failfast -shuffle=on -coverprofile=${{ matrix.os }}-profile -covermode=atomic -coverpkg=./... ./... 
+
+      - name: upload cover profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-profile
+          path: ${{ matrix.os }}-profile
+          if-no-files-found: error
+  check-coverage:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: download ubuntu-latest-profile
+        uses: actions/download-artifact@v4
+        with:
+          name: ubuntu-latest-profile
+      - name: download macos-latest-profile
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-latest-profile
+
+      - name: download artifact (main.breakdown)
+        id: download-main-breakdown
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          branch: main
+          workflow_conclusion: success
+          name: main.breakdown
+          if_no_artifact_found: warn
+
+      - name: check test coverage
+        id: coverage
+        uses: vladopajic/go-test-coverage@v2
+        continue-on-error: true # Should fail after coverage comment is posted
+        with:
+          config: ./.testcoverage.yml
+          profile: ubuntu-latest-profile,macos-latest-profile
+          git-branch: badges
+          git-token: ${{ github.ref_name == 'main' && secrets.GITHUB_TOKEN || '' }}
+          breakdown-file-name: ${{ github.ref_name == 'main' && 'main.breakdown' || '' }}
+          diff-base-breakdown-file-name: ${{ steps.download-main-breakdown.outputs.found_artifact == 'true' && 'main.breakdown' || '' }}
+      - name: upload artifact (main.breakdown)
+        uses: actions/upload-artifact@v4
+        if: github.ref_name == 'main'
+        with:
+          name: main.breakdown
+          path: main.breakdown # as specified via `breakdown-file-name`
+          if-no-files-found: error
+      - name: "finally check coverage"
+        if: steps.coverage.outcome == 'failure'
+        shell: bash
+        run: echo "coverage check failed" && exit 1
+
+  create-issue-if-job-fails:
+    needs: check-coverage
+    runs-on: ubuntu-latest
+    if: always() && needs.check-coverage.result == 'failure' && github.repository_owner != 'arwoosa'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+    
+      - name: Create Issue
+        uses: dacbd/create-issue-action@main
+        with:
+          token: ${{ github.token }}
+          title: |
+            [${{ github.workflow }}] failed during [${{ github.event_name }}]
+
+          # Auto-assign person who triggered the failure.
+          assignees: ${{ github.actor }},${{ github.triggering_actor }}
+          labels: CICD
+          body: |
+            ## Failure Report:
+            
+            > [!IMPORTANT]
+            > Details on failed run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    
+            - Author: @${{ github.triggering_actor }}
+            - Branch: `${{ github.ref }}`
+            - Commit: ${{ github.sha }}
+            - Workflow Path: `${{ github.workflow_ref }}`
+    
+            - [ ] **Task**: Review failed run, fix the issue(s), and re-run until successful.
+    
+            > This issue was created automatically by GitHub, 
+            > through `dacbd/create-issue-action@main` action
+            > and KemingHe's contribution.
+            > **DO NOT** close this issue until resolved.

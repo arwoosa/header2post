@@ -1,0 +1,62 @@
+name: golangci-lint
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  issues: write 
+
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract Go version from go.mod
+        id: go-version
+        run: |
+          go_version=$(grep -E '^go [0-9]+\.[0-9]+' go.mod | awk '{print $2}')
+          echo "GO_VERSION=$go_version" >> $GITHUB_ENV
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+  create-issue-if-job-fails:
+    needs: golangci
+    runs-on: ubuntu-latest
+    if: always() && needs.golangci.result == 'failure' && github.repository_owner != 'arwoosa'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+    
+      - name: Create Issue
+        uses: dacbd/create-issue-action@main
+        with:
+          token: ${{ github.token }}
+          title: |
+            [${{ github.workflow }}] failed during [${{ github.event_name }}]
+
+          # Auto-assign person who triggered the failure.
+          assignees: ${{ github.actor }},${{ github.triggering_actor }}
+          labels: CICD
+          body: |
+            ## Failure Report:
+            
+            > [!IMPORTANT]
+            > Details on failed run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    
+            - Author: @${{ github.triggering_actor }}
+            - Branch: `${{ github.ref }}`
+            - Commit: ${{ github.sha }}
+            - Workflow Path: `${{ github.workflow_ref }}`
+    
+            - [ ] **Task**: Review failed run, fix the issue(s), and re-run until successful.
+    
+            > This issue was created automatically by GitHub, 
+            > through `dacbd/create-issue-action@main` action
+            > and KemingHe's contribution.
+            > **DO NOT** close this issue until resolved.
