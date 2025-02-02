@@ -92,6 +92,8 @@ func (i *injectResponseWriter) WriteHeader(statusCode int) {
 	i.code = statusCode
 }
 
+// checks for a specific header in the response, extracts its value,
+// sends a notification POST request, and logs the result.
 func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	respWriter := newInjectWriter()
 	a.next.ServeHTTP(respWriter, req)
@@ -103,6 +105,10 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	defer func() {
+		respWriter.Header().Del(a.notifyHeader)
+		respWriter.copy(rw)
+	}()
 	// base64 decode
 	data, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
@@ -110,7 +116,7 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// post data to notify url
-	resp, err := http.Post(a.notifyUrl, "application/json", bytes.NewBuffer(data))
+	resp, err := a.post(bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("post error:", err)
 		return
@@ -119,7 +125,8 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		log.Println("notify success")
 	} else {
 		// read resp body
-		bodyBytes, err := io.ReadAll(resp.Body)
+		fmt.Println(resp.Body)
+		bodyBytes, err := readBody(resp.Body)
 		if err != nil {
 			log.Println("read resp body error:", err)
 			return
@@ -127,3 +134,20 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		log.Println("notify failed: ", string(bodyBytes))
 	}
 }
+
+func readBody(r io.Reader) ([]byte, error) {
+	if mockRead != nil {
+		return mockRead(r)
+	}
+	return io.ReadAll(r)
+}
+
+func (a *notify) post(body io.Reader) (*http.Response, error) {
+	if mockPost != nil {
+		return mockPost(a.notifyUrl, "application/json", body)
+	}
+	return http.Post(a.notifyUrl, "application/json", body)
+}
+
+var mockPost func(url string, contentType string, body io.Reader) (*http.Response, error)
+var mockRead func(r io.Reader) ([]byte, error)
