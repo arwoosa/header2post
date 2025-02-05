@@ -1,12 +1,14 @@
 package header2post
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 )
@@ -51,64 +53,22 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	}, nil
 }
 
-type injectResponseWriter struct {
-	header http.Header
-	code   int
-	data   []byte
-}
-
-func (inject *injectResponseWriter) copy(w http.ResponseWriter) {
-	for key, value := range inject.Header() {
-		for i, v := range value {
-			if i == 0 {
-				w.Header().Set(key, v)
-				continue
-			}
-			w.Header().Add(key, v)
-		}
-	}
-	w.WriteHeader(inject.code)
-	_, err := w.Write(inject.data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func newInjectWriter() *injectResponseWriter {
-	return &injectResponseWriter{
-		header: make(http.Header),
-		code:   http.StatusOK,
-	}
-}
-
-func (i *injectResponseWriter) Header() http.Header {
-	return i.header
-}
-func (i *injectResponseWriter) Write(b []byte) (int, error) {
-	i.data = b
-	return len(b), nil
-}
-func (i *injectResponseWriter) WriteHeader(statusCode int) {
-	i.code = statusCode
-}
-
 // checks for a specific header in the response, extracts its value,
 // sends a notification POST request, and logs the result.
 func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	respWriter := rw
+	respWriter := newResponseWriter(rw)
+	defer func() {
+		respWriter.Header().Del(a.notifyHeader)
+		respWriter.Flush()
+	}()
+
 	a.next.ServeHTTP(respWriter, req)
 
 	value := respWriter.Header().Get(a.notifyHeader)
 	if value == "" {
-		// respWriter.Header().Del(a.notifyHeader)
-		// respWriter.copy(rw)
 		return
 	}
 
-	// defer func() {
-	// 	respWriter.Header().Del(a.notifyHeader)
-	// 	respWriter.copy(rw)
-	// }()
 	// base64 decode
 	data, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
@@ -150,3 +110,46 @@ func (a *notify) post(body io.Reader) (*http.Response, error) {
 
 var mockPost func(url string, contentType string, body io.Reader) (*http.Response, error)
 var mockRead func(r io.Reader) ([]byte, error)
+
+func newResponseWriter(w http.ResponseWriter) *wrappedResponseWriter {
+	return &wrappedResponseWriter{w: w, buf: &bytes.Buffer{}, code: http.StatusOK}
+}
+
+type wrappedResponseWriter struct {
+	w    http.ResponseWriter
+	buf  *bytes.Buffer
+	code int
+}
+
+func (w *wrappedResponseWriter) Header() http.Header {
+	return w.w.Header()
+}
+
+func (w *wrappedResponseWriter) Write(b []byte) (int, error) {
+	return w.buf.Write(b)
+}
+
+func (w *wrappedResponseWriter) WriteHeader(code int) {
+	w.code = code
+}
+
+func (w *wrappedResponseWriter) Flush() {
+	w.w.WriteHeader(w.code)
+	io.Copy(w.w, w.buf)
+}
+
+func (w *wrappedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.w.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("%T is not an http.Hijacker", w.w)
+	}
+
+	return hijacker.Hijack()
+}
+
+var (
+	_ interface {
+		http.ResponseWriter
+		http.Hijacker
+	} = &wrappedResponseWriter{}
+)
