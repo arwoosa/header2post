@@ -95,20 +95,20 @@ func (i *injectResponseWriter) WriteHeader(statusCode int) {
 // checks for a specific header in the response, extracts its value,
 // sends a notification POST request, and logs the result.
 func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	respWriter := newInjectWriter()
+	respWriter := rw
 	a.next.ServeHTTP(respWriter, req)
 
 	value := respWriter.Header().Get(a.notifyHeader)
 	if value == "" {
-		respWriter.Header().Del(a.notifyHeader)
-		respWriter.copy(rw)
+		// respWriter.Header().Del(a.notifyHeader)
+		// respWriter.copy(rw)
 		return
 	}
 
-	defer func() {
-		respWriter.Header().Del(a.notifyHeader)
-		respWriter.copy(rw)
-	}()
+	// defer func() {
+	// 	respWriter.Header().Del(a.notifyHeader)
+	// 	respWriter.copy(rw)
+	// }()
 	// base64 decode
 	data, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
@@ -124,8 +124,7 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if resp.StatusCode == http.StatusAccepted {
 		log.Println("notify success")
 	} else {
-		// read resp body
-		fmt.Println(resp.Body)
+		// read resp bodyf
 		bodyBytes, err := readBody(resp.Body)
 		if err != nil {
 			log.Println("read resp body error:", err)
