@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
+	"testing"
 )
 
 func init() {
@@ -19,8 +21,9 @@ func init() {
 
 // Config the plugin configuration.
 type Config struct {
-	NotifyHeader string `yaml:"notifyheader"`
-	NotifyUrl    string `yaml:"notifyurl"`
+	NotifyHeader   string   `yaml:"notifyheader"`
+	NotifyUrl      string   `yaml:"notifyurl"`
+	ForwardHeaders []string `yaml:"forwardheaders"`
 }
 
 // CreateConfig creates the default plugin configuration.
@@ -30,10 +33,11 @@ func CreateConfig() *Config {
 
 // Demo a Demo plugin.
 type notify struct {
-	next         http.Handler
-	notifyHeader string
-	notifyUrl    string
-	name         string
+	next           http.Handler
+	forwardHeaders []string
+	notifyHeader   string
+	notifyUrl      string
+	name           string
 }
 
 // New created a new Demo plugin.
@@ -46,10 +50,11 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	}
 
 	return &notify{
-		next:         next,
-		name:         name,
-		notifyHeader: config.NotifyHeader,
-		notifyUrl:    config.NotifyUrl,
+		next:           next,
+		name:           name,
+		notifyHeader:   config.NotifyHeader,
+		notifyUrl:      config.NotifyUrl,
+		forwardHeaders: config.ForwardHeaders,
 	}, nil
 }
 
@@ -75,8 +80,33 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		log.Println("base64 decode error:", err)
 		return
 	}
+
+	forwardHeaders := make(http.Header)
+	for _, k := range a.forwardHeaders {
+		v := req.Header.Get(k)
+		if v != "" {
+			forwardHeaders.Add(k, v)
+		}
+	}
+
+	// create http request
+	myreq, err := http.NewRequest("POST", a.notifyUrl, bytes.NewBuffer(data))
+	if err != nil {
+		log.Println("create http request error:", err)
+		return
+	}
+	myreq.Header.Set("Content-Type", "application/json")
+	var headerValu string
+	for _, h := range a.forwardHeaders {
+		headerValu = strings.TrimSpace(req.Header.Get(h))
+		if headerValu == "" {
+			continue
+		}
+		myreq.Header.Set(h, headerValu)
+	}
+
 	// post data to notify url
-	resp, err := a.post(bytes.NewBuffer(data))
+	resp, err := a.post(myreq)
 	if err != nil {
 		log.Println("post error:", err)
 		return
@@ -94,6 +124,8 @@ func (a *notify) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+var apiT *testing.T
+
 func readBody(r io.Reader) ([]byte, error) {
 	if mockRead != nil {
 		return mockRead(r)
@@ -101,14 +133,15 @@ func readBody(r io.Reader) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
-func (a *notify) post(body io.Reader) (*http.Response, error) {
+func (a *notify) post(req *http.Request) (*http.Response, error) {
 	if mockPost != nil {
-		return mockPost(a.notifyUrl, "application/json", body)
+		return mockPost(apiT, req)
 	}
-	return http.Post(a.notifyUrl, "application/json", body)
+
+	return http.DefaultClient.Do(req)
 }
 
-var mockPost func(url string, contentType string, body io.Reader) (*http.Response, error)
+var mockPost func(t *testing.T, req *http.Request) (*http.Response, error)
 var mockRead func(r io.Reader) ([]byte, error)
 
 func newResponseWriter(w http.ResponseWriter) *wrappedResponseWriter {
