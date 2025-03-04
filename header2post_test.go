@@ -202,7 +202,7 @@ func TestServeHTTPWithForardHeaders(t *testing.T) {
 	tests := []struct {
 		name           string
 		nextHandler    http.Handler
-		forwardHeaders []string
+		forwardHeaders string
 		expectedCode   int
 		expectedBody   string
 		mockPost       func(t *testing.T, req *http.Request) (*http.Response, error)
@@ -218,7 +218,7 @@ func TestServeHTTPWithForardHeaders(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("hello world"))
 			}),
-			forwardHeaders: []string{"X-Test-Forward-A", "X-Test-Forward-B", "X-Test-Forward-C"},
+			forwardHeaders: "X-Test-Forward-A,X-Test-Forward-B,X-Test-Forward-C",
 			mockPost: func(t *testing.T, req *http.Request) (*http.Response, error) {
 				if req.Header.Get("X-Test-Forward-A") != "a" {
 					t.Errorf("X-Test-Forward-A header not forwarded")

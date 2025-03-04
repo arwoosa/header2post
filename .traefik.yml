@@ -9,4 +9,4 @@ summary: 'check notify header exist and use http post to url'
 testData:
   notifyheader: X-Notify
   notifyurl: http://localhost:8000
-  forwardheader: [X-Forward-A, X-Forward-B]
+  forwardheaders: X-Forward-A,X-Forward-B
