@@ -21,9 +21,9 @@ func init() {
 
 // Config the plugin configuration.
 type Config struct {
-	NotifyHeader   string `yaml:"notifyheader"`
-	NotifyUrl      string `yaml:"notifyurl"`
-	ForwardHeaders string `yaml:"forwardheaders"`
+	NotifyHeader   string   `yaml:"notifyheader"`
+	NotifyUrl      string   `yaml:"notifyurl"`
+	ForwardHeaders []string `yaml:"forwardheaders"`
 }
 
 // CreateConfig creates the default plugin configuration.
@@ -48,13 +48,12 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	if len(config.NotifyUrl) == 0 {
 		return nil, fmt.Errorf("notifyurl cannot be empty")
 	}
-	fordwardHeaders := strings.Split(config.ForwardHeaders, ",")
 	return &notify{
 		next:           next,
 		name:           name,
 		notifyHeader:   config.NotifyHeader,
 		notifyUrl:      config.NotifyUrl,
-		forwardHeaders: fordwardHeaders,
+		forwardHeaders: config.ForwardHeaders,
 	}, nil
 }
 

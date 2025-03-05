@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -250,7 +251,8 @@ func TestServeHTTPWithForardHeaders(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logBuf := &bytes.Buffer{}
 			log.SetOutput(logBuf)
-			notify, err := New(nil, tt.nextHandler, &Config{NotifyHeader: notifyHeaderKey, NotifyUrl: "https://example.com/notification", ForwardHeaders: tt.forwardHeaders}, "header2post")
+
+			notify, err := New(nil, tt.nextHandler, &Config{NotifyHeader: notifyHeaderKey, NotifyUrl: "https://example.com/notification", ForwardHeaders: strings.Split(tt.forwardHeaders, ",")}, "header2post")
 			if err != nil {
 				t.Errorf("failed to create notify: %v", err)
 			}
